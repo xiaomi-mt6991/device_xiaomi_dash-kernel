@@ -44,6 +44,8 @@ BLACKLISTED_MODULES = {
     "mi_ubt_test.ko",
     "bootmonitor.ko",
     "crash_module.ko",
+    "zsmalloc.ko",
+    "zram.ko",
 }
 
 extract_out = None
@@ -221,7 +223,7 @@ def main():
         print("Stripping blacklisted modules from system_dlkm")
         strip_blacklisted_modules(
             Path("./modules/system_dlkm"),
-            keep={"libarc4.ko", "rfkill.ko"},
+            keep={"libarc4.ko", "rfkill.ko", "zsmalloc.ko", "zram.ko"},
         )
 
         # Extract DTBO and DTBs

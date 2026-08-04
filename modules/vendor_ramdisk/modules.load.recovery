@@ -242,8 +242,6 @@ mtk-mmdvfs-v3-start.ko
 ccci_util_lib.ko
 ccci_auxadc.ko
 ccci_md_all.ko
-zsmalloc.ko
-zram.ko
 debug_ext.ko
 mtd_blkdevs.ko
 ofpart.ko

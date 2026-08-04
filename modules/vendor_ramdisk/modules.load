@@ -227,8 +227,6 @@ pkvm_mkp.ko
 mtk_battery_manager.ko
 nxp_i2c.ko
 p73.ko
-zsmalloc.ko
-zram.ko
 debug_ext.ko
 mtd_blkdevs.ko
 ofpart.ko
