@@ -218,8 +218,6 @@ pkvm_tmem.ko
 pkvm_mgmt.ko
 pkvm_smmu.ko
 pkvm_mkp.ko
-libarc4.ko
-rfkill.ko
 mtk_et.ko
 ccmni.ko
 rps_perf.ko

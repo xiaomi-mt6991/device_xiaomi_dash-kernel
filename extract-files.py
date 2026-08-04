@@ -12,6 +12,8 @@ EXTRACT_OTA = "../../../prebuilts/extract-tools/linux-x86/bin/ota_extractor"
 MKDTBOIMG = "../../../system/libufdt/utils/src/mkdtboimg.py"
 UNPACKBOOTIMG = "../../../system/tools/mkbootimg/unpack_bootimg.py"
 
+BLACKLISTED_MODULES = {"libarc4.ko", "rfkill.ko"}
+
 extract_out = None
 
 
@@ -40,6 +42,22 @@ def unpackbootimg(*args):
 
 def extract_ota(*args):
     run(EXTRACT_OTA, *args)
+
+
+def strip_blacklisted_modules(modules_dir: Path):
+    for mod in BLACKLISTED_MODULES:
+        f = modules_dir / mod
+        if f.exists():
+            f.unlink()
+            print(f"  - removed {mod}")
+
+    load_file = modules_dir / "modules.load.recovery"
+    if load_file.exists():
+        lines = load_file.read_text().splitlines()
+        kept = [l for l in lines if Path(l.strip()).name not in BLACKLISTED_MODULES]
+        if len(kept) != len(lines):
+            load_file.write_text("\n".join(kept) + ("\n" if kept else ""))
+            print(f"  - cleaned {load_file.name}")
 
 
 def main():
@@ -115,6 +133,9 @@ def main():
             ):
                 shutil.copy(module, "./modules/vendor_ramdisk/")
 
+        print("Stripping blacklisted modules from vendor_ramdisk")
+        strip_blacklisted_modules(Path("./modules/vendor_ramdisk"))
+
         # VENDOR_DLKM
         print("Extracting the dlkm kernel modules")
         vdlkm_out = Path(extract_out) / "vendor_dlkm"
@@ -176,3 +197,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
