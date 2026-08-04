@@ -141,7 +141,6 @@ ufs-mediatek-dbg.ko
 mi_memory.ko
 blocktag.ko
 hwid.ko
-simtray.ko
 pidmap.ko
 mtk-pmic-keys.ko
 mtk-i3c-i2c-wrap.ko
@@ -243,13 +242,8 @@ mtk-mmdvfs-v3-start.ko
 ccci_util_lib.ko
 ccci_auxadc.ko
 ccci_md_all.ko
-mi_t1_gpio.ko
 zsmalloc.ko
 zram.ko
-perf_helper.ko
-mi_stack.ko
-mi_ubt.ko
-mi_ubt_test.ko
 debug_ext.ko
 mtd_blkdevs.ko
 ofpart.ko
