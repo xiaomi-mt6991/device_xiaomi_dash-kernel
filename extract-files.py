@@ -12,7 +12,39 @@ EXTRACT_OTA = "../../../prebuilts/extract-tools/linux-x86/bin/ota_extractor"
 MKDTBOIMG = "../../../system/libufdt/utils/src/mkdtboimg.py"
 UNPACKBOOTIMG = "../../../system/tools/mkbootimg/unpack_bootimg.py"
 
-BLACKLISTED_MODULES = {"libarc4.ko", "rfkill.ko"}
+BLACKLISTED_MODULES = {
+    "libarc4.ko",
+    "rfkill.ko",
+    "simtray.ko",
+    "perf_helper.ko",
+    "mi_mempool.ko",
+    "migt.ko",
+    "unfairmem.ko",
+    "scene_swappiness.ko",
+    "unionpower.ko",
+    "binder_prio.ko",
+    "sla.ko",
+    "miwill.ko",
+    "miwill_mode_redudancy.ko",
+    "minet.ko",
+    "mi_t1_gpio.ko",
+    "millet_binder.ko",
+    "millet_core.ko",
+    "millet_hs.ko",
+    "millet_pkg.ko",
+    "millet_sig.ko",
+    "millet_oem_cgroup.ko",
+    "binder_gki.ko",
+    "dio_dma_mapper.ko",
+    "mi_log.ko",
+    "mi_exception_log.ko",
+    "mi_mem_epoll.ko",
+    "mi_stack.ko",
+    "mi_ubt.ko",
+    "mi_ubt_test.ko",
+    "bootmonitor.ko",
+    "crash_module.ko",
+}
 
 extract_out = None
 
@@ -44,20 +76,31 @@ def extract_ota(*args):
     run(EXTRACT_OTA, *args)
 
 
-def strip_blacklisted_modules(modules_dir: Path):
-    for mod in BLACKLISTED_MODULES:
-        f = modules_dir / mod
-        if f.exists():
-            f.unlink()
-            print(f"  - removed {mod}")
+def strip_blacklisted_modules(modules_dir: Path, keep: set = frozenset()):
+    if not modules_dir.is_dir():
+        return
 
-    load_file = modules_dir / "modules.load.recovery"
-    if load_file.exists():
-        lines = load_file.read_text().splitlines()
-        kept = [l for l in lines if Path(l.strip()).name not in BLACKLISTED_MODULES]
+    to_remove = BLACKLISTED_MODULES - keep
+
+    removed_any = False
+    for ko in modules_dir.rglob("*.ko"):
+        if ko.name in to_remove:
+            ko.unlink()
+            print(f"  - removed {ko.relative_to(modules_dir)}")
+            removed_any = True
+
+    for list_file in list(modules_dir.rglob("modules.load*")) + list(modules_dir.rglob("modules.blocklist")):
+        if not list_file.is_file():
+            continue
+        lines = list_file.read_text().splitlines()
+        kept = [l for l in lines if Path(l.strip()).name not in to_remove]
         if len(kept) != len(lines):
-            load_file.write_text("\n".join(kept) + ("\n" if kept else ""))
-            print(f"  - cleaned {load_file.name}")
+            list_file.write_text("\n".join(kept) + ("\n" if kept else ""))
+            print(f"  - cleaned {list_file.relative_to(modules_dir)}")
+            removed_any = True
+
+    if not removed_any:
+        print(f"  - nothing to remove in {modules_dir}")
 
 
 def main():
@@ -152,6 +195,9 @@ def main():
             ):
                 shutil.copy(module, "./modules/vendor_dlkm/")
 
+        print("Stripping blacklisted modules from vendor_dlkm")
+        strip_blacklisted_modules(Path("./modules/vendor_dlkm"))
+
         # SYSTEM_DLKM
         print("Extracting the system dlkm kernel modules")
         sdlkm_out = Path(extract_out) / "system_dlkm"
@@ -171,6 +217,12 @@ def main():
                         shutil.copy(item, dest)
             else:
                 shutil.copy(ver_dir, Path("./modules/system_dlkm") / ver_dir.name)
+
+        print("Stripping blacklisted modules from system_dlkm")
+        strip_blacklisted_modules(
+            Path("./modules/system_dlkm"),
+            keep={"libarc4.ko", "rfkill.ko"},
+        )
 
         # Extract DTBO and DTBs
         print("Extracting DTBO and DTBs")
@@ -197,4 +249,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
