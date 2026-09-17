@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
+import io
 import os
 import sys
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import urllib.request
 from pathlib import Path
@@ -11,6 +13,7 @@ from pathlib import Path
 EXTRACT_OTA = "../../../prebuilts/extract-tools/linux-x86/bin/ota_extractor"
 MKDTBOIMG = "../../../system/libufdt/utils/src/mkdtboimg.py"
 UNPACKBOOTIMG = "../../../system/tools/mkbootimg/unpack_bootimg.py"
+KERNEL_UAPI_HEADERS = Path(__file__).resolve().parent / "kernel-uapi-headers.tar.gz"
 
 BLACKLISTED_MODULES = {
     "libarc4.ko",
@@ -59,6 +62,7 @@ def error_handler():
 
 def usage():
     print("Usage: ./extract-files.py <rom-zip>")
+    print("       ./extract-files.py --fix-headers")
     sys.exit(1)
 
 
@@ -105,11 +109,53 @@ def strip_blacklisted_modules(modules_dir: Path, keep: set = frozenset()):
         print(f"  - nothing to remove in {modules_dir}")
 
 
+def fix_kernel_uapi_headers(tarball: Path = KERNEL_UAPI_HEADERS):
+    """Rename struct sched_param in the prebuilt kernel headers.
+
+    Same approach as shennong 6033bfd: sed
+    's/struct sched_param/struct __kernel_sched_param/g' over every header,
+    so it no longer collides with bionic/libc/include/sched.h:99 when a TU
+    includes both <sched.h> and <linux/sched/types.h>.
+    """
+    if not tarball.is_file():
+        print(f"Missing {tarball}, nothing to fix")
+        sys.exit(1)
+
+    print(f"Fixing sched_param redefinition in {tarball}")
+    tmp = tarball.with_suffix(".tar.gz.tmp")
+    fixed = 0
+    with tarfile.open(tarball, "r:gz") as src, tarfile.open(tmp, "w:gz", compresslevel=9) as dst:
+        for member in src.getmembers():
+            if member.isfile() and member.name.endswith(".h"):
+                data = src.extractfile(member).read().replace(
+                    b"struct sched_param", b"struct __kernel_sched_param"
+                )
+                if len(data) != member.size:
+                    fixed += 1
+                member.size = len(data)
+                dst.addfile(member, io.BytesIO(data))
+            else:
+                fileobj = src.extractfile(member) if member.isfile() else None
+                dst.addfile(member, fileobj)
+
+    if not fixed:
+        tmp.unlink()
+        print("  - no bare 'struct sched_param' found, tarball already fixed")
+        return
+
+    os.replace(tmp, tarball)
+    print(f"  - renamed in {fixed} header(s), repacked {tarball.name}")
+
+
 def main():
     global extract_out
 
     if len(sys.argv) < 2:
         usage()
+
+    if sys.argv[1] in ("--fix-headers", "fix-headers"):
+        fix_kernel_uapi_headers()
+        return
 
     rom_zip = sys.argv[1]
 
