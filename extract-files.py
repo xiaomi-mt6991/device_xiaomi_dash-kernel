@@ -2,6 +2,7 @@
 
 import io
 import os
+import re
 import sys
 import shutil
 import subprocess
@@ -147,6 +148,108 @@ def fix_kernel_uapi_headers(tarball: Path = KERNEL_UAPI_HEADERS):
     print(f"  - renamed in {fixed} header(s), repacked {tarball.name}")
 
 
+# Mailbox nodes handled by mtk_mbox_probe(). Without an mbox-attr property the
+# driver requests the IRQ with IRQF_NO_SUSPEND (0x4000), and pairing that with
+# enable_irq_wake() trips the "misconfigured IRQ %u %s" detector, which shows
+# up as thousands of spurious resumes (ALPS10085899). The property is an array
+# of per-channel irqflags, one entry per "mboxN" name in interrupt-names.
+# sap@1cb20000 is left out on purpose: it is disabled and never probes.
+MBOX_ATTR_NODES = (
+    "gpueb@4b000000",
+    "mmup@31a00000",
+    "vcp@31800000",
+    "scp@1c800000",
+)
+
+
+def find_dts_node(dts_content: str, node_name: str):
+    """Return the (start, end) offsets of a named node block, braces included."""
+    header = re.compile(
+        r"^[ \t]*(?:[A-Za-z_][A-Za-z0-9_]*:[ \t]*)?"
+        + re.escape(node_name)
+        + r"[ \t]*\{",
+        re.MULTILINE,
+    )
+    match = header.search(dts_content)
+    if not match:
+        return None
+
+    depth = 0
+    in_string = False
+    i = match.end() - 1
+    while i < len(dts_content):
+        char = dts_content[i]
+        if in_string:
+            if char == "\\":
+                i += 2
+                continue
+            if char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return match.start(), i + 1
+        i += 1
+    return None
+
+
+def fixup_dtb(dtb_path: Path):
+    """Add the missing mbox-attr property to mailbox nodes using dtc."""
+    dts_path = dtb_path.with_suffix(".dts")
+    try:
+        run("dtc", "-I", "dtb", "-O", "dts", "-o", str(dts_path), str(dtb_path))
+    except subprocess.CalledProcessError:
+        print(f"  - warning: dtc failed for {dtb_path.name}, skipping fixup")
+        if dts_path.exists():
+            dts_path.unlink()
+        return
+
+    dts_content = dts_path.read_text()
+    patched = []
+    for node_name in MBOX_ATTR_NODES:
+        span = find_dts_node(dts_content, node_name)
+        if not span:
+            print(f"  - warning: {node_name} not found in {dtb_path.name}, skipping fixup")
+            continue
+
+        start, end = span
+        body = dts_content[start:end]
+        if "mbox-attr" in body:
+            continue
+
+        names = re.search(r'^([ \t]*)interrupt-names = ([^;]+);\n', body, re.MULTILINE)
+        if not names:
+            print(f"  - warning: {node_name} has no interrupt-names, skipping fixup")
+            continue
+        channels = re.findall(r'"mbox\d*"', names.group(2))
+        if not channels:
+            continue
+
+        attr = f'{names.group(1)}mbox-attr = <{" ".join(["0x00"] * len(channels))}>;\n'
+        dts_content = (
+            dts_content[:start]
+            + body[: names.end()]
+            + attr
+            + body[names.end():]
+            + dts_content[end:]
+        )
+        patched.append(f"{node_name} ({len(channels)} cells)")
+
+    if patched:
+        dts_path.write_text(dts_content)
+        run("dtc", "-I", "dts", "-O", "dtb", "-o", str(dtb_path), str(dts_path))
+        print(f"  - added mbox-attr to {', '.join(patched)} in {dtb_path.name}")
+    else:
+        print(f"  - {dtb_path.name} already has mbox-attr on every mailbox node")
+
+    if dts_path.exists():
+        dts_path.unlink()
+
+
 def main():
     global extract_out
 
@@ -282,6 +385,7 @@ def main():
         run("python3", str(extract_dtb_py), str(vb_out / "dtb"), "-o", str(dtbs_out))
 
         for dtb in dtbs_out.rglob("*.dtb"):
+            fixup_dtb(dtb)
             shutil.copy(dtb, "./dtb/")
             print(f"  - dtb/{dtb.name}")
 
