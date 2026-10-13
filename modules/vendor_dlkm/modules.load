@@ -231,6 +231,7 @@ nt38771_touch_dash.ko
 perf-actuator.ko
 xr-qi.ko
 xr-qs.ko
+dio_dma_mapper.ko
 miicmpfilter.ko
 mi_schedule.ko
 metis.ko

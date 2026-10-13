@@ -39,7 +39,6 @@ BLACKLISTED_MODULES = {
     "millet_sig.ko",
     "millet_oem_cgroup.ko",
     "binder_gki.ko",
-    "dio_dma_mapper.ko",
     "mi_log.ko",
     "mi_exception_log.ko",
     "mi_mem_epoll.ko",
